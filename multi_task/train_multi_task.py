@@ -162,7 +162,11 @@ def train_multi_task(param_file):
 
                 ## PCGrad
                 if 'pc_grad' in params.keys():
-                    grads = pc_grad_update(grads)
+                    grad_list = list(grads.values())
+                    grad_list = pc_grad_update(grad_list)
+
+                    for index, t in enumerate(tasks):
+                        grads[t] = grad_list[index]
                 
                 # Normalize all gradients, this is optional and not included in the paper.
                 gn = gradient_normalizers(grads, loss_data, params['normalization_type'])
