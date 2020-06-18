@@ -50,7 +50,7 @@ class MinNormSolver:
                 if (j,j) not in dps:
                     dps[(j, j)] = 0.0   
                     for k in range(len(vecs[i])):
-                        dps[(j, j)] += torch.dot(vecs[j][k], vecs[j][k]).item()
+                        dps[(j, j)] += torch.dot(vecs[j][k].view(-1), vecs[j][k].view(-1)).item()
                 c,d = MinNormSolver._min_norm_element_from2(dps[(i,i)], dps[(i,j)], dps[(j,j)])
                 if d < dmin:
                     dmin = d
