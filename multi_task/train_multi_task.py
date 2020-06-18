@@ -38,7 +38,8 @@ def train_multi_task(param_file):
     with open(param_file) as json_params:
         params = json.load(json_params)
 
-    wandb.init(configs['wandb'])
+    wandb.init(**configs['wandb'])
+    wandb.config.update({"params": params})
 
     exp_identifier = []
     for (key, val) in params.items():
