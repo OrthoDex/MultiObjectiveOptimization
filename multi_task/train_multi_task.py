@@ -24,6 +24,9 @@ import metrics
 import model_selector
 from min_norm_solvers import MinNormSolver, gradient_normalizers
 
+import wandb
+from pc_grad import pc_grad_update
+
 NUM_EPOCHS = 100
 
 @click.command()
@@ -35,6 +38,8 @@ def train_multi_task(param_file):
     with open(param_file) as json_params:
         params = json.load(json_params)
 
+    wandb.init(**configs['wandb'])
+    wandb.config.update({"params": params})
 
     exp_identifier = []
     for (key, val) in params.items():
@@ -54,6 +59,7 @@ def train_multi_task(param_file):
     model = model_selector.get_model(params)
     model_params = []
     for m in model:
+        wandb.watch(model[m])
         model_params += model[m].parameters()
 
     if 'RMSprop' in params['optimizer']:
@@ -130,7 +136,7 @@ def train_multi_task(param_file):
                         optimizer.zero_grad()
                         out_t, masks[t] = model[t](rep_variable, None)
                         loss = loss_fn[t](out_t, labels[t])
-                        loss_data[t] = loss.data[0]
+                        loss_data[t] = loss.data.item()
                         loss.backward()
                         grads[t] = []
                         if list_rep:
@@ -147,13 +153,21 @@ def train_multi_task(param_file):
                         rep, mask = model['rep'](images, mask)
                         out_t, masks[t] = model[t](rep, None)
                         loss = loss_fn[t](out_t, labels[t])
-                        loss_data[t] = loss.data[0]
+                        loss_data[t] = loss.data.item()
                         loss.backward()
                         grads[t] = []
                         for param in model['rep'].parameters():
                             if param.grad is not None:
                                 grads[t].append(Variable(param.grad.data.clone(), requires_grad=False))
 
+                ## PCGrad
+                if 'pc_grad' in params.keys():
+                    grad_list = list(grads.values())
+                    grad_list = pc_grad_update(grad_list)
+
+                    for index, t in enumerate(tasks):
+                        grads[t] = grad_list[index]
+                
                 # Normalize all gradients, this is optional and not included in the paper.
                 gn = gradient_normalizers(grads, loss_data, params['normalization_type'])
                 for t in tasks:
@@ -175,7 +189,7 @@ def train_multi_task(param_file):
             for i, t in enumerate(tasks):
                 out_t, _ = model[t](rep, masks[t])
                 loss_t = loss_fn[t](out_t, labels[t])
-                loss_data[t] = loss_t.data[0]
+                loss_data[t] = loss_t.data.item()
                 if i > 0:
                     loss = loss + scale[t]*loss_t
                 else:
@@ -183,7 +197,7 @@ def train_multi_task(param_file):
             loss.backward()
             optimizer.step()
 
-            writer.add_scalar('training_loss', loss.data[0], n_iter)
+            writer.add_scalar('training_loss', loss.data.item(), n_iter)
             for t in tasks:
                 writer.add_scalar('training_loss_{}'.format(t), loss_data[t], n_iter)
 
@@ -212,8 +226,8 @@ def train_multi_task(param_file):
             for t in tasks:
                 out_t_val, _ = model[t](val_rep, None)
                 loss_t = loss_fn[t](out_t_val, labels_val[t])
-                tot_loss['all'] += loss_t.data[0]
-                tot_loss[t] += loss_t.data[0]
+                tot_loss['all'] += loss_t.data.item()
+                tot_loss[t] += loss_t.data.item()
                 metric[t].update(out_t_val, labels_val[t])
             num_val_batches+=1
 
